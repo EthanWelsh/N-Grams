@@ -1,10 +1,12 @@
 import os
-import re
-
 import pickle
-from nltk.tokenize import sent_tokenize
+import re
+import sys
 from os import listdir
 from os.path import isfile, join
+
+from nltk.tokenize import sent_tokenize
+
 
 class NGram:
     def __init__(self, n):
@@ -17,7 +19,7 @@ class NGram:
                 self.add(ngram)
 
     def add(self, ngram):
-        assert(len(ngram) == self.n)
+        assert (len(ngram) == self.n)
 
         if self.n == 1:
             self.gram[ngram] = self.gram.get(ngram, 0) + 1
@@ -31,11 +33,11 @@ class NGram:
             self.gram[prefix] = prefix_dict
 
     def get_prefix_dict(self, prefix):
-        assert(len(prefix) == self.n - 1)
+        assert (len(prefix) == self.n - 1)
         return self.gram[prefix]
 
     def get_most_likely(self, prefix, options=None):
-        assert(len(prefix) == self.n - 1)
+        assert (len(prefix) == self.n - 1)
         prefix_dict = self.get_prefix_dict(prefix)
         return max(iter(options) if options else iter(prefix_dict), key=prefix_dict.get)
 
@@ -60,22 +62,22 @@ def train_corpus(directory_path, n):
 
 
 def main():
-    ngram_file = 'ngram.pickle'
+    n = int(sys.argv[1])
+
+    ngram_file = '{}gram.pickle'.format(n)
     if os.path.exists(ngram_file):
         print('Reading model from file.')
         with open(ngram_file, 'rb') as handle:
             ngram = pickle.load(handle)
     else:
-        ngram = train_corpus('/Users/welshej/Downloads/Holmes_Training_Data', 2)
+        ngram = train_corpus('Holmes_Training_Data', n)
         with open(ngram_file, 'wb') as handle:
             pickle.dump(ngram, handle)
 
-    print('<s1>: ', ngram.get_most_likely(('<s1>',)))
-    print('the: ', ngram.get_most_likely(('the',)))
-    print('who: ', ngram.get_most_likely(('who',)))
-    print('what: ', ngram.get_most_likely(('what',)))
-    print('where: ', ngram.get_most_likely(('where',)))
-    print('when: ', ngram.get_most_likely(('when',)))
+    while True:
+        print('>', end=' ')
+        words = tuple(input().split())
+        print(ngram.get_most_likely(words))
 
 
 if __name__ == '__main__':
