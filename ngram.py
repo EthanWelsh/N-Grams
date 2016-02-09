@@ -1,5 +1,10 @@
-from nltk.tokenize import sent_tokenize
+import os
+import re
 
+import pickle
+from nltk.tokenize import sent_tokenize
+from os import listdir
+from os.path import isfile, join
 
 class NGram:
     def __init__(self, n):
@@ -40,12 +45,38 @@ def get_sentences(untokenized_text):
     return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
 
 
-def main():
-    bigram = NGram(2)
+def train_corpus(directory_path, n):
+    ngram = NGram(n)
+    disclaimer_regex = r'\*?END\*?THE SMALL PRINT!.*\n?.*\*?END\*?'
 
-    sentences = get_sentences('the cat jumped on the other cat. How was your day? My name is cat, what is yours Mr. Crouch?')
-    bigram.train(sentences)
-    print(bigram.get_most_likely(('the',)))
+    files = [file for file in listdir(directory_path) if isfile(join(directory_path, file))]
+    for file in files:
+        print(file)
+        with open(os.path.join(directory_path, file), encoding='utf-8', errors='ignore') as data_file:
+            sentences = get_sentences(re.split(disclaimer_regex, data_file.read())[1])
+            ngram.train(sentences)
+
+    return ngram
+
+
+def main():
+    ngram_file = 'ngram.pickle'
+    if os.path.exists(ngram_file):
+        print('Reading model from file.')
+        with open(ngram_file, 'rb') as handle:
+            ngram = pickle.load(handle)
+    else:
+        ngram = train_corpus('/Users/welshej/Downloads/Holmes_Training_Data', 2)
+        with open(ngram_file, 'wb') as handle:
+            pickle.dump(ngram, handle)
+
+    print('<s1>: ', ngram.get_most_likely(('<s1>',)))
+    print('the: ', ngram.get_most_likely(('the',)))
+    print('who: ', ngram.get_most_likely(('who',)))
+    print('what: ', ngram.get_most_likely(('what',)))
+    print('where: ', ngram.get_most_likely(('where',)))
+    print('when: ', ngram.get_most_likely(('when',)))
+
 
 if __name__ == '__main__':
     main()
