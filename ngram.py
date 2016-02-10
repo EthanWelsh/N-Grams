@@ -1,45 +1,75 @@
 import os
-import pickle
+import jsonpickle
 import re
-import sys
 from os import listdir
 from os.path import isfile, join
+import time
 
 from nltk.tokenize import sent_tokenize
 
 
 class NGram:
-    def __init__(self, n):
-        self.gram = {}
-        self.n = n
+    class WordDictionary:
+        def __init__(self):
+            self.word_dict = {}
+            self.words_in_dict = 0
 
-    def train(self, sentences):
-        for sentence in sentences:
-            for ngram in zip(*[sentence[i:] for i in range(self.n)]):
-                self.add(ngram)
+        def get_probability(self, word):
+            if self.words_in_dict == 0:
+                return 0
+
+            return self.word_dict.get(word, 0) / self.words_in_dict
+
+        def increase_count(self, word):
+            self.word_dict[word] = self.word_dict.get(word, 0) + 1
+            self.words_in_dict += 1
+
+        def __iter__(self):
+            return self.word_dict.__iter__()
+
+        def keys(self):
+            return self.word_dict.keys()
+
+    def __init__(self):
+        self.ngrams = {}
+        self.unigrams = {}
+        self.word_count = 0
+
+    def train(self, sentences, n):
+
+        if n == 1:
+            for sentence in sentences:
+                for word in sentence:
+                    self.unigrams[word] = self.unigrams.get(word, 0) + 1
+                    self.word_count += 1
+
+        else:
+            for sentence in sentences:
+                for ngram in zip(*[sentence[i:] for i in range(n)]):
+                    self.add(ngram)
 
     def add(self, ngram):
-        assert (len(ngram) == self.n)
+        prefix = ngram[:-1]
+        word = ngram[-1]
 
-        if self.n == 1:
-            self.gram[ngram] = self.gram.get(ngram, 0) + 1
-        else:
-            prefix = ngram[:-1]
-            word = ngram[-1]
+        prefix_dict = self.ngrams.get(prefix, NGram.WordDictionary())
+        prefix_dict.increase_count(word)
 
-            prefix_dict = self.gram.get(prefix, {})
-            prefix_dict[word] = prefix_dict.get(word, 0) + 1
+        self.ngrams[prefix] = prefix_dict
 
-            self.gram[prefix] = prefix_dict
+    def successor_probabilities(self, prefix):
+        unigrams = dict([(word, self.unigrams[word] / self.word_count) for word in self.unigrams.keys()])
+        bigrams = dict(
+            [(word, self.ngrams[prefix[-2:]].get_probability(word)) for word in self.ngrams[prefix[-2:]].keys()])
+        trigrams = dict([(word, self.ngrams[prefix].get_probability(word)) for word in self.ngrams[prefix].keys()])
 
-    def get_prefix_dict(self, prefix):
-        assert (len(prefix) == self.n - 1)
-        return self.gram[prefix]
+        word_probabilities = {word: (.1 * unigrams.get(word, 0) +
+                                     .4 * bigrams.get(word, 0) +
+                                     .5 * trigrams.get(word, 0))
+                              for word in self.unigrams.keys()}
 
-    def get_most_likely(self, prefix, options=None):
-        assert (len(prefix) == self.n - 1)
-        prefix_dict = self.get_prefix_dict(prefix)
-        return max(iter(options) if options else iter(prefix_dict), key=prefix_dict.get)
+        max_word = max(iter(word_probabilities), key=word_probabilities.get)
+        return max_word
 
 
 def get_sentences(untokenized_text):
@@ -47,8 +77,8 @@ def get_sentences(untokenized_text):
     return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
 
 
-def train_corpus(directory_path, n):
-    ngram = NGram(n)
+def train_corpus(directory_path):
+    ngram = NGram()
     disclaimer_regex = r'\*?END\*?THE SMALL PRINT!.*\n?.*\*?END\*?'
 
     files = [file for file in listdir(directory_path) if isfile(join(directory_path, file))]
@@ -56,28 +86,42 @@ def train_corpus(directory_path, n):
         print(file)
         with open(os.path.join(directory_path, file), encoding='utf-8', errors='ignore') as data_file:
             sentences = get_sentences(re.split(disclaimer_regex, data_file.read())[1])
-            ngram.train(sentences)
+            ngram.train(sentences, 1)  # unigram
+            ngram.train(sentences, 2)  # bigram
+            ngram.train(sentences, 3)  # trigram
 
     return ngram
 
 
 def main():
-    n = int(sys.argv[1])
 
-    ngram_file = '{}gram.pickle'.format(n)
+    #PICKLE
+    # WRITE: 1161.844680070877
+    # READ: 321.8026509284973
+
+    ngram_file = 'ngram.pickle'
     if os.path.exists(ngram_file):
         print('Reading model from file.')
-        with open(ngram_file, 'rb') as handle:
-            ngram = pickle.load(handle)
+        start = time.time()
+        with open(ngram_file, 'r') as handle:
+            ngram = jsonpickle.decode(handle.read())
+        print('READ:', time.time() - start)
     else:
-        ngram = train_corpus('Holmes_Training_Data', n)
+        start = time.time()
+        ngram = train_corpus('Holmes_Training_Data')
+        print('TRAIN: ', time.time() - start)
+
+        start = time.time()
         with open(ngram_file, 'wb') as handle:
-            pickle.dump(ngram, handle)
+            my_pickle = bytes(jsonpickle.encode(ngram), encoding='utf8')
+            handle.write(my_pickle)
+            #pickle.dump(ngram, handle)
+        print('WRITE:', time.time() - start)
 
     while True:
         print('>', end=' ')
         words = tuple(input().split())
-        print(ngram.get_most_likely(words))
+        print(ngram.successor_probabilities(words))
 
 
 if __name__ == '__main__':
