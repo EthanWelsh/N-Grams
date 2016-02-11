@@ -124,7 +124,7 @@ def train_corpus(directory_path):
 
 def main():
 
-    ngram_file = 'ngram.pickle'
+    ngram_file = 'ngram.json'
     if os.path.exists(ngram_file):
 
         print('Reading model from file.')
