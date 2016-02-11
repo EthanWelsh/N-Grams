@@ -76,18 +76,48 @@ def get_sentences(untokenized_text):
     return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
 
 
+def get_unknowns(word_counts, k):
+    return set(word for word, count in word_counts.items() if count <= k)
+
+
+def get_word_histogram(sentences):
+    word_counts = {}
+    for sentence in sentences:
+        for word in sentence:
+            word_counts[word] = word_counts.get(word, 0) + 1
+    return word_counts
+
+
+def prune_unknowns(sentences):
+    word_hist = get_word_histogram(sentences)
+    unknowns = get_unknowns(word_hist, 1)
+    return [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
+
+
 def train_corpus(directory_path):
-    ngram = NGram()
+    files = [join(directory_path, file) for file in listdir(directory_path) if isfile(join(directory_path, file))]
     disclaimer_regex = r'\*?END\*?THE SMALL PRINT!.*\n?.*\*?END\*?'
 
-    files = [file for file in listdir(directory_path) if isfile(join(directory_path, file))]
+    print('Reading in {} files...'.format(len(files)))
+    sentences = []
     for file in files:
         print(file)
-        with open(os.path.join(directory_path, file), encoding='utf-8', errors='ignore') as data_file:
-            sentences = get_sentences(re.split(disclaimer_regex, data_file.read())[1])
-            ngram.train(sentences, 1)  # unigram
-            ngram.train(sentences, 2)  # bigram
-            ngram.train(sentences, 3)  # trigram
+        with open(file, encoding='utf-8', errors='ignore') as data_file:
+            sentences += get_sentences(re.split(disclaimer_regex, data_file.read())[1])
+
+    print('Pruning Sentences')
+    sentences = prune_unknowns(sentences)
+
+    ngram = NGram()
+
+    print('Training Unigram')
+    ngram.train(sentences, 1)  # unigram
+
+    print('Training Bigram')
+    ngram.train(sentences, 2)  # bigram
+
+    print('Training Trigram')
+    ngram.train(sentences, 3)  # trigram
 
     return ngram
 
