@@ -1,9 +1,8 @@
 import os
-import jsonpickle
+import ujson
 import re
 from os import listdir
 from os.path import isfile, join
-import time
 
 from nltk.tokenize import sent_tokenize
 
@@ -95,28 +94,16 @@ def train_corpus(directory_path):
 
 def main():
 
-    #PICKLE
-    # WRITE: 1161.844680070877
-    # READ: 321.8026509284973
-
     ngram_file = 'ngram.pickle'
     if os.path.exists(ngram_file):
-        print('Reading model from file.')
-        start = time.time()
-        with open(ngram_file, 'r') as handle:
-            ngram = jsonpickle.decode(handle.read())
-        print('READ:', time.time() - start)
-    else:
-        start = time.time()
-        ngram = train_corpus('Holmes_Training_Data')
-        print('TRAIN: ', time.time() - start)
 
-        start = time.time()
+        print('Reading model from file.')
+        with open(ngram_file, 'rb') as handle:
+            ngram = ujson.load(handle)
+    else:
+        ngram = train_corpus('Holmes_Training_Data')
         with open(ngram_file, 'wb') as handle:
-            my_pickle = bytes(jsonpickle.encode(ngram), encoding='utf8')
-            handle.write(my_pickle)
-            #pickle.dump(ngram, handle)
-        print('WRITE:', time.time() - start)
+            handle.write(bytes(ujson.dumps(ngram), encoding='utf8'))
 
     while True:
         print('>', end=' ')
