@@ -1,9 +1,10 @@
 import os
-import ujson
+import pickle
 import re
 from os import listdir
 from os.path import isfile, join
 
+import time
 from nltk.tokenize import sent_tokenize
 
 
@@ -57,6 +58,8 @@ class NGram:
         self.ngrams[prefix] = prefix_dict
 
     def successor_probabilities(self, prefix):
+
+        prefix = [word if word in self.unigrams else 'UNK' for word in prefix]
         unigrams = dict([(word, self.unigrams[word] / self.word_count) for word in self.unigrams.keys()])
         bigrams = dict(
             [(word, self.ngrams[prefix[-2:]].get_probability(word)) for word in self.ngrams[prefix[-2:]].keys()])
@@ -66,6 +69,11 @@ class NGram:
                                      .4 * bigrams.get(word, 0) +
                                      .5 * trigrams.get(word, 0))
                               for word in self.unigrams.keys()}
+
+        return word_probabilities
+
+    def max_successor(self, prefix):
+        word_probabilities = self.successor_probabilities(prefix)
 
         max_word = max(iter(word_probabilities), key=word_probabilities.get)
         return max_word
@@ -94,16 +102,24 @@ def prune_unknowns(sentences):
     return [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
 
 
-def train_corpus(directory_path):
-    files = [join(directory_path, file) for file in listdir(directory_path) if isfile(join(directory_path, file))]
+def remove_gutenberg_disclamer(file_str):
     disclaimer_regex = r'\*?END\*?THE SMALL PRINT!.*\n?.*\*?END\*?'
+    if re.match(disclaimer_regex, file_str):
+        return re.split(disclaimer_regex, file_str)[1]
+
+    return file_str
+
+
+def train_corpus(directory_path, clean_routine=None):
+    files = [join(directory_path, file) for file in listdir(directory_path) if isfile(join(directory_path, file))]
 
     print('Reading in {} files...'.format(len(files)))
     sentences = []
     for file in files:
         print(file)
         with open(file, encoding='utf-8', errors='ignore') as data_file:
-            sentences += get_sentences(re.split(disclaimer_regex, data_file.read())[1])
+            file_data = data_file.read()
+            sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data)
 
     print('Pruning Sentences')
     sentences = prune_unknowns(sentences)
@@ -124,21 +140,28 @@ def train_corpus(directory_path):
 
 def main():
 
-    ngram_file = 'ngram.json'
+    ngram_file = 'ngram.pickle'
     if os.path.exists(ngram_file):
 
         print('Reading model from file.')
+        start = time.time()
         with open(ngram_file, 'rb') as handle:
-            ngram = ujson.load(handle)
+            ngram = pickle.load(handle)
+        print('READ', time.time() - start)
     else:
-        ngram = train_corpus('Holmes_Training_Data')
+        start = time.time()
+        ngram = train_corpus('training_data', remove_gutenberg_disclamer)
+        print('TRAIN', time.time() - start)
+
+        start = time.time()
         with open(ngram_file, 'wb') as handle:
-            handle.write(bytes(ujson.dumps(ngram), encoding='utf8'))
+            pickle.dump(ngram, handle)
+        print('WRITE', time.time() - start)
 
     while True:
         print('>', end=' ')
         words = tuple(input().split())
-        print(ngram.successor_probabilities(words))
+        print(ngram.max_successor(words))
 
 
 if __name__ == '__main__':
