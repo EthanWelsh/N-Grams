@@ -139,24 +139,7 @@ def train_corpus(directory_path, clean_routine=None):
 
 
 def main():
-
-    ngram_file = 'ngram.pickle'
-    if os.path.exists(ngram_file):
-
-        print('Reading model from file.')
-        start = time.time()
-        with open(ngram_file, 'rb') as handle:
-            ngram = pickle.load(handle)
-        print('READ', time.time() - start)
-    else:
-        start = time.time()
-        ngram = train_corpus('training_data', remove_gutenberg_disclamer)
-        print('TRAIN', time.time() - start)
-
-        start = time.time()
-        with open(ngram_file, 'wb') as handle:
-            pickle.dump(ngram, handle)
-        print('WRITE', time.time() - start)
+    ngram = train_corpus('training_data', remove_gutenberg_disclamer)
 
     while True:
         print('>', end=' ')
