@@ -4,12 +4,20 @@ from os.path import isfile, join
 
 from nltk.tokenize import sent_tokenize
 
+from scipy.optimize import fmin
+
 from ngram import NGram
 
 
-def get_sentences(untokenized_text):
-    untokenized_text = untokenized_text.lower()
-    return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
+def get_sentences(untokenized_text, is_tokenized=False, token_start_end=None):
+
+    if not is_tokenized:
+        untokenized_text = untokenized_text.lower()
+        return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
+    else:
+        start_token, end_token = token_start_end
+        return [('<s0> <s1> ' + sentence + '</s>').split() for sentence in
+                re.findall(r'{}(.*){}'.format(start_token, end_token), untokenized_text)]
 
 
 def get_unknowns(word_counts, k):
@@ -24,9 +32,9 @@ def get_word_histogram(sentences):
     return word_counts
 
 
-def prune_unknowns(sentences):
+def prune_unknowns(sentences, k=1):
     word_hist = get_word_histogram(sentences)
-    unknowns = get_unknowns(word_hist, 1)
+    unknowns = get_unknowns(word_hist, k)
     return [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
 
 
@@ -38,20 +46,30 @@ def remove_gutenberg_disclamer(file_str):
     return file_str
 
 
-def train_corpus(directory_path, clean_routine=None):
-    files = [join(directory_path, file) for file in listdir(directory_path) if isfile(join(directory_path, file))]
-
-    print('Reading in {} files...'.format(len(files)))
+def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=None, clean_routine=None):
     sentences = []
-    for file in files:
-        print(file)
-        with open(file, encoding='utf-8', errors='ignore') as data_file:
+
+    if is_directory:
+        files = [join(path, file) for file in listdir(path) if isfile(join(path, file))]
+        print('Reading in {} files...'.format(len(files)))
+
+        for file in files:
+            print(file)
+            with open(file, encoding='utf-8', errors='ignore') as data_file:
+                file_data = data_file.read()
+                data_file.readlines()
+
+                sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized, token_start_end)
+    else:
+        with open(path, encoding='utf-8', errors='ignore') as data_file:
             file_data = data_file.read()
-            sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data)
+            sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized, token_start_end)
 
-    print('Pruning Sentences')
+    return sentences
+
+
+def train_corpus(sentences):
     sentences = prune_unknowns(sentences)
-
     ngram = NGram()
 
     print('Training Unigram')
@@ -66,13 +84,23 @@ def train_corpus(directory_path, clean_routine=None):
     return ngram
 
 
-def main():
-    ngram = train_corpus('dev_data', remove_gutenberg_disclamer)
-
+def prompt(ngram):
     while True:
         print('>', end=' ')
         words = tuple(input().split())
         print(ngram.max_successor(words))
+
+
+def main():
+
+    train_sentences = read_corpus('train.txt')
+    test_sentences = read_corpus('test.txt', is_tokenized=True, token_start_end=('<s>', '</s>'))
+
+    print(train_sentences)
+    print(test_sentences)
+
+    ngram = train_corpus(test_sentences)
+    print(ngram.perplexity(train_sentences))
 
 
 if __name__ == '__main__':
