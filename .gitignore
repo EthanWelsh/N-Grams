@@ -60,3 +60,6 @@ target/
 
 ngram.json
 /*_data
+dev.txt
+test.txt
+train.txt
