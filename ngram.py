@@ -50,8 +50,7 @@ class NGram:
 
         self.ngrams[prefix] = prefix_dict
 
-    def successor_probabilities(self, prefix, interpolation_weights=(.1, .4, .5)):
-
+    def successor_probabilities(self, prefix):
         prefix = tuple(word if word in self.unigrams else '<UNK>' for word in prefix)
 
         unigrams = dict([(word, self.unigrams[word] / self.word_count)
@@ -63,31 +62,43 @@ class NGram:
         trigrams = dict([(word, self.ngrams[prefix].get_probability(word))
                          for word in self.ngrams[prefix].keys()]) if prefix in self.ngrams else {}
 
-        unigram_weight, bigram_weight, trigram_weight = interpolation_weights
-        normalization_factor = sum(interpolation_weights)
-
-        word_probabilities = {word: (unigram_weight / normalization_factor * unigrams.get(word, 0) +
-                                     bigram_weight / normalization_factor * bigrams.get(word, 0) +
-                                     trigram_weight / normalization_factor * trigrams.get(word, 0))
+        word_probabilities = {word: (unigrams.get(word, 0), bigrams.get(word, 0), trigrams.get(word, 0))
                               for word in self.unigrams.keys()}
 
         return word_probabilities
 
-    def max_successor(self, prefix):
-        word_probabilities = self.successor_probabilities(prefix)
+    def sentences_probabilities(self, sentences):
+        return [self.per_word_probabilities(sentence) for sentence in sentences]
 
-        max_word = max(iter(word_probabilities), key=word_probabilities.get)
-        return max_word
+    def per_word_probabilities(self, sentence):
+        probabilities = []
+        for trigram in zip(*[sentence[i:] for i in range(3)]):
+            prefix, result = (trigram[:2], trigram[-1])
+            probabilities += [self.successor_probabilities(prefix).get(result, (0, 0, 0))]
+        return probabilities
 
-    def perplexity(self, sentences, lambdas):
-        perplexity = 0
-        for sentence in sentences:
-            perplexity_values = []
-            for trigram in zip(*[sentence[i:] for i in range(3)]):
-                prefix, result = (trigram[:2], trigram[-1])
-                perplexity_values += [self.successor_probabilities(prefix, interpolation_weights=tuple(lambdas)).get(result, 0)]
+    def interpolate_sentences(self, sentences_probabilities, lambdas):
+        return [self._interpolate_sentence(sent, lambdas) for sent in sentences_probabilities]
 
-            print(perplexity_values)
-            perplexity += math.pow(2, sum([(-p * math.log(p) if p > 0 else 0) for p in perplexity_values]))
+    @staticmethod
+    def _interpolate_sentence(sentence_probabilities, lambdas):
+        sentence_probs = []
 
-        return perplexity / len(sentences)
+        for word_probabilities in sentence_probabilities:
+            unigram, bigram, trigram = word_probabilities
+            unigram_weight, bigram_weight, trigram_weight = lambdas
+
+            assert(sum(lambdas) == 1)
+
+            sentence_probs += [unigram * unigram_weight + bigram * bigram_weight + trigram * trigram_weight]
+
+        return sentence_probs #sum(sentence_probs) / len(sentence_probs)
+
+    def sentences_perplexity(self, sentences_probabilities):
+        sentence_perplexity = [self.per_word_perplexity(p) for p in sentences_probabilities]
+        return sum(sentence_perplexity) / len(sentence_perplexity)
+
+    @staticmethod
+    def per_word_perplexity(sentence_probabilities):
+        word_perplexities = [math.pow(2, math.log(p) / len(sentence_probabilities)) if p > 0 else float('inf') for p in sentence_probabilities]
+        return sum(word_perplexities) / len(word_perplexities)

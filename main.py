@@ -109,16 +109,25 @@ def main():
     #train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
 
     train_sentences = read_corpus('train_data', is_directory=True, is_tokenized=False)
-    # test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
+    #test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
 
     print('Training on Corpus')
     ngram = train_corpus(train_sentences)
 
-    print('Optimizing Lambdas for Interpolation')
-    lambdas = optimize_lambdas(ngram, train_sentences)
-    print(lambdas)
+    sentences_probabilities = ngram.sentences_probabilities(train_sentences)
 
-    print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
+    interpolated_probabilities = ngram.interpolate_sentences(sentences_probabilities, lambdas=(.15, .35, .5))
+    print(ngram.sentences_perplexity(interpolated_probabilities))
+
+    interpolated_probabilities = ngram.interpolate_sentences(sentences_probabilities, lambdas=(.1, .3, .6))
+    print(ngram.sentences_perplexity(interpolated_probabilities))
+
+
+    #print('Optimizing Lambdas for Interpolation')
+    #lambdas = optimize_lambdas(ngram, train_sentences)
+    #print(lambdas)
+
+    #print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
 
 
 if __name__ == '__main__':
