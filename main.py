@@ -4,7 +4,6 @@ from os.path import isfile, join
 
 import numpy as np
 import scipy
-
 from nltk.tokenize import sent_tokenize
 
 from ngram import NGram
@@ -94,22 +93,32 @@ def prompt(ngram):
 
 
 def optimize_lambdas(model, sentences):
-    opt_helper = lambda x, s: model.perplexity(lambdas=tuple(x), sentences=s)
-    return scipy.optimize.fmin(opt_helper, np.array([.1, .4, .5]), args=(sentences,), disp=False)
+    print('starting optimization')
+    parameters = scipy.optimize.minimize(lambda x, s: model.perplexity(lambdas=tuple(x), sentences=s),
+                                         np.array([.1, .4, .5]),
+                                         args=(sentences,),
+                                         options={'disp': False, 'maxiter': 10, 'maxfun':1},
+                                         bounds=[(0, 1), (0, 1), (0, 1)])
+    print('--------------------------------')
+    print(tuple(parameters.x))
+    print('--------------------------------')
+    return tuple(parameters.x)
 
 
 def main():
-    train_sentences = read_corpus('training_data', is_directory=True, is_tokenized=False)
-    test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
+    #train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
+
+    train_sentences = read_corpus('train_data', is_directory=True, is_tokenized=False)
+    # test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
 
     print('Training on Corpus')
     ngram = train_corpus(train_sentences)
 
     print('Optimizing Lambdas for Interpolation')
-    lambdas = optimize_lambdas(ngram, test_sentences)
+    lambdas = optimize_lambdas(ngram, train_sentences)
     print(lambdas)
 
-    print(ngram.perplexity(sentences=test_sentences, lambdas=lambdas))
+    print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
 
 
 if __name__ == '__main__':
