@@ -1,3 +1,6 @@
+import math
+
+
 class NGram:
     class WordDictionary:
         def __init__(self):
@@ -47,7 +50,7 @@ class NGram:
 
         self.ngrams[prefix] = prefix_dict
 
-    def successor_probabilities(self, prefix):
+    def successor_probabilities(self, prefix, interpolation_weights=(.1, .4, .5)):
 
         prefix = tuple(word if word in self.unigrams else '<UNK>' for word in prefix)
 
@@ -60,9 +63,12 @@ class NGram:
         trigrams = dict([(word, self.ngrams[prefix].get_probability(word))
                          for word in self.ngrams[prefix].keys()]) if prefix in self.ngrams else {}
 
-        word_probabilities = {word: (.1 * unigrams.get(word, 0) +
-                                     .4 * bigrams.get(word, 0) +
-                                     .5 * trigrams.get(word, 0))
+        unigram_weight, bigram_weight, trigram_weight = interpolation_weights
+        normalization_factor = sum(interpolation_weights)
+
+        word_probabilities = {word: (unigram_weight / normalization_factor * unigrams.get(word, 0) +
+                                     bigram_weight / normalization_factor * bigrams.get(word, 0) +
+                                     trigram_weight / normalization_factor * trigrams.get(word, 0))
                               for word in self.unigrams.keys()}
 
         return word_probabilities
@@ -72,3 +78,16 @@ class NGram:
 
         max_word = max(iter(word_probabilities), key=word_probabilities.get)
         return max_word
+
+    def perplexity(self, sentences, lambdas):
+        perplexity = 0
+        for sentence in sentences:
+            perplexity_values = []
+            for trigram in zip(*[sentence[i:] for i in range(3)]):
+                prefix, result = (trigram[:2], trigram[-1])
+                perplexity_values += [self.successor_probabilities(prefix, interpolation_weights=tuple(lambdas)).get(result, 0)]
+
+            print(perplexity_values)
+            perplexity += math.pow(2, sum([(-p * math.log(p) if p > 0 else 0) for p in perplexity_values]))
+
+        return perplexity / len(sentences)

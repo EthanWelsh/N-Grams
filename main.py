@@ -2,15 +2,15 @@ import re
 from os import listdir
 from os.path import isfile, join
 
-from nltk.tokenize import sent_tokenize
+import numpy as np
+import scipy
 
-from scipy.optimize import fmin
+from nltk.tokenize import sent_tokenize
 
 from ngram import NGram
 
 
 def get_sentences(untokenized_text, is_tokenized=False, token_start_end=None):
-
     if not is_tokenized:
         untokenized_text = untokenized_text.lower()
         return [('<s0> <s1> ' + sentence + ' </s>').split() for sentence in sent_tokenize(untokenized_text)]
@@ -59,11 +59,13 @@ def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=No
                 file_data = data_file.read()
                 data_file.readlines()
 
-                sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized, token_start_end)
+                sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized,
+                                           token_start_end)
     else:
         with open(path, encoding='utf-8', errors='ignore') as data_file:
             file_data = data_file.read()
-            sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized, token_start_end)
+            sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized,
+                                       token_start_end)
 
     return sentences
 
@@ -91,16 +93,23 @@ def prompt(ngram):
         print(ngram.max_successor(words))
 
 
+def optimize_lambdas(model, sentences):
+    opt_helper = lambda x, s: model.perplexity(lambdas=tuple(x), sentences=s)
+    return scipy.optimize.fmin(opt_helper, np.array([.1, .4, .5]), args=(sentences,), disp=False)
+
+
 def main():
+    train_sentences = read_corpus('training_data', is_directory=True, is_tokenized=False)
+    test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
 
-    train_sentences = read_corpus('train.txt')
-    test_sentences = read_corpus('test.txt', is_tokenized=True, token_start_end=('<s>', '</s>'))
+    print('Training on Corpus')
+    ngram = train_corpus(train_sentences)
 
-    print(train_sentences)
-    print(test_sentences)
+    print('Optimizing Lambdas for Interpolation')
+    lambdas = optimize_lambdas(ngram, test_sentences)
+    print(lambdas)
 
-    ngram = train_corpus(test_sentences)
-    print(ngram.perplexity(train_sentences))
+    print(ngram.perplexity(sentences=test_sentences, lambdas=lambdas))
 
 
 if __name__ == '__main__':
