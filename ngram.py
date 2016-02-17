@@ -1,5 +1,7 @@
 import math
 
+import sys
+
 
 class NGram:
     class WordDictionary:
@@ -30,17 +32,28 @@ class NGram:
 
         self.probabilities = []
 
-    def train(self, sentences, n):
+    def train(self, sentences, n, disp=False):
         if n == 1:
-            for sentence in sentences:
+            for i, sentence in enumerate(sentences):
+                if disp and int((i/len(sentences)) * 100) % 2 == 0:
+                    progress = int((i/len(sentences)) * 100)
+                    self.progress_bar(progress)
+
                 for word in sentence:
                     self.unigrams[word] = self.unigrams.get(word, 0) + 1
                     self.word_count += 1
 
         else:
-            for sentence in sentences:
+            for i, sentence in enumerate(sentences):
+                if disp and int((i/len(sentences)) * 100) % 2 == 0:
+                    progress = int((i/len(sentences)) * 100)
+                    self.progress_bar(progress)
+
                 for ngram in zip(*[sentence[i:] for i in range(n)]):
                     self.add(ngram)
+
+        if disp:
+            print()
 
     def add(self, ngram):
         prefix = ngram[:-1]
@@ -71,28 +84,34 @@ class NGram:
     unigram, bigram, and trigram models
     """
 
-    def sentences_probabilities(self, sentences):
-        print('Getting probabilities for', len(sentences), 'sentences')
+    def sentences_probabilities(self, sentences, disp=False):
         self.probabilities.clear()
-        for sentence in sentences:
-            self.probabilities += [self._per_word_probabilities(sentence)]
 
-            # self.probabilities = [self._per_word_probabilities(sentence) for sentence in sentences]
+        for i, sentence in enumerate(sentences):
+            if disp and int((i/len(sentences)) * 100) % 2 == 0:
+                progress = int((i / len(sentences)) * 100)
+                self.progress_bar(progress)
 
-    """
-    Given a sentence (a list of words), will compute the probability values for each word in the sentence
-    :return: a list of probability values for each respective word of the sentence.
-    """
+            sentence_probabilities = []
 
-    def _per_word_probabilities(self, sentence):
-        probabilities = []
+            for trigram in zip(*[sentence[i:] for i in range(3)]):
+                trigram = tuple(word if word in self.unigrams else '<UNK>' for word in trigram)
 
-        for trigram in zip(*[sentence[i:] for i in range(3)]):
-            prefix, result = (trigram[:2], trigram[-1])
+                unigram_prob = self.unigrams.get(trigram[-1], self.unigrams['<UNK>']) / self.word_count
+                bigram_prob, trigram_prob = 0, 0
 
-            probabilities += [(self.unigrams.get(result, self.unigrams['<UNK>']) / self.word_count,) +
-                              self.successor_probabilities(prefix).get(result, (0, 0))]
-        return probabilities
+                if trigram[-2] in self.ngrams:
+                    bigram_prob = self.ngrams[trigram[-2]].get_probability(trigram[-1])
+
+                if trigram[-3:-1] in self.ngrams:
+                    trigram_prob = self.ngrams[trigram[-3:-1]].get_probability(trigram[-1])
+
+                sentence_probabilities += [(unigram_prob, bigram_prob, trigram_prob)]
+
+            self.probabilities += [sentence_probabilities]
+
+        if disp:
+            print()
 
     """
     Interpolate together the unigram, bigram, and trigram probabilities
@@ -100,8 +119,10 @@ class NGram:
     """
 
     def interpolate(self, lambdas):
-        interpolated_probabilities = []
+        w1, w2, w3 = lambdas
+        lambdas = (w1 / sum(lambdas), w2 / sum(lambdas), w3 / sum(lambdas))
 
+        interpolated_probabilities = []
         for sentence in self.probabilities:
             sentence_probs = []
             for word in sentence:
@@ -117,11 +138,18 @@ class NGram:
 
     def perplexity(self, lambdas):
 
+        lambdas = tuple(lambdas)
         sentence_perplexities = []
         for sentence in self.interpolate(lambdas):
             for word_probability in sentence:
                 sentence_perplexities += [sum(
-                    [math.pow(2, -1 * math.log(word_probability, 2) if word_probability > 0.0 else float('inf'))]) / len(
+                    [math.pow(2,
+                              -1 * math.log(word_probability, 2) if word_probability > 0.0 else float('inf'))]) / len(
                     sentence)]
 
         return sum(sentence_perplexities) / len(sentence_perplexities), sentence_perplexities
+
+    @staticmethod
+    def progress_bar(progress):
+            sys.stdout.write('\r[{0}] {1}%'.format('#'*progress + ' '*(100-progress), progress))
+            sys.stdout.flush()

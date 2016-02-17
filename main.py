@@ -1,8 +1,9 @@
 import re
+import sys
+import time
 from os import listdir
 from os.path import isfile, join
 
-import numpy as np
 import scipy
 from nltk.tokenize import sent_tokenize
 
@@ -45,21 +46,25 @@ def remove_gutenberg_disclamer(file_str):
     return file_str
 
 
-def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=None, clean_routine=None):
+def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=None, clean_routine=None, disp=False):
     sentences = []
 
     if is_directory:
         files = [join(path, file) for file in listdir(path) if isfile(join(path, file))]
-        print('Reading in {} files...'.format(len(files)))
+        for i, file in enumerate(files):
+            if disp and int((i / len(files)) * 100) % 2 == 0:
+                progress = int((i / len(files)) * 100)
+                progress_bar(progress)
 
-        for file in files:
-            print(file)
             with open(file, encoding='utf-8', errors='ignore') as data_file:
                 file_data = data_file.read()
                 data_file.readlines()
 
                 sentences += get_sentences(clean_routine(file_data) if clean_routine else file_data, is_tokenized,
                                            token_start_end)
+
+        if disp:
+            print()
     else:
         with open(path, encoding='utf-8', errors='ignore') as data_file:
             file_data = data_file.read()
@@ -73,14 +78,14 @@ def train_corpus(sentences):
     sentences = prune_unknowns(sentences)
     ngram = NGram()
 
-    print('Training Unigram')
-    ngram.train(sentences, 1)  # unigram
+    print('\nTraining Unigram')
+    ngram.train(sentences, 1, disp=True)  # unigram
 
-    print('Training Bigram')
-    ngram.train(sentences, 2)  # bigram
+    print('\nTraining Bigram')
+    ngram.train(sentences, 2, disp=True)  # bigram
 
-    print('Training Trigram')
-    ngram.train(sentences, 3)  # trigram
+    print('\nTraining Trigram')
+    ngram.train(sentences, 3, disp=True)  # trigram
 
     return ngram
 
@@ -92,21 +97,17 @@ def prompt(ngram):
         print(ngram.max_successor(words))
 
 
-def optimize_lambdas(model, sentences):
-    print('starting optimization')
-    parameters = scipy.optimize.minimize(lambda x, s: model.perplexity(lambdas=tuple(x), sentences=s),
-                                         np.array([.1, .4, .5]),
-                                         args=(sentences,),
-                                         options={'disp': False, 'maxiter': 10, 'maxfun':1},
-                                         bounds=[(0, 1), (0, 1), (0, 1)])
-    print('--------------------------------')
-    print(tuple(parameters.x))
-    print('--------------------------------')
-    return tuple(parameters.x)
+def optimize_lambdas(model):
+    parameters = scipy.optimize.fmin_slsqp(lambda x : model.perplexity(x)[0],
+                                           (.1, .4, .5),
+                                           bounds=((0, 1), (0, 1), (0, 1)),
+                                           disp=False,
+                                           full_output=False)
+
+    return tuple(parameters)
 
 
 def evaluate(perplexities):
-
     non_inf_values = []
 
     for perplexity in perplexities:
@@ -116,18 +117,26 @@ def evaluate(perplexities):
     return sum(non_inf_values) / len(non_inf_values), len(perplexities) - len(non_inf_values)
 
 
+def progress_bar(progress):
+    sys.stdout.write('\r[{0}] {1}%'.format('#' * progress + ' ' * (100 - progress), progress))
+    sys.stdout.flush()
+
+
 def main():
     #train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
 
-    train_sentences = read_corpus('train_data', is_directory=True, is_tokenized=False)
+    print("Reading Corpus:")
+    train_sentences = read_corpus('train_data', is_directory=True, is_tokenized=False, disp=True)
+    dev_sentences = read_corpus('dev_data', is_directory=True, is_tokenized=False, disp=True)
     #test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
 
-    print('Training on Corpus')
+    print('\nTraining on Corpus')
     ngram = train_corpus(train_sentences)
 
-    print('Computing probabilities...')
+    print('\nComputing Probabilities:')
+    ngram.sentences_probabilities(dev_sentences, disp=True)
 
-    ngram.sentences_probabilities(train_sentences)
+    del train_sentences, dev_sentences
 
     print()
 
@@ -141,11 +150,18 @@ def main():
     _, sentence_perplexities = ngram.perplexity(lambdas=(.1, .3, .6))
     print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
 
-    #print('Optimizing Lambdas for Interpolation')
-    #lambdas = optimize_lambdas(ngram, train_sentences)
-    #print(lambdas)
+    print()
 
-    #print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
+    print('Optimizing Lambdas for Interpolation')
+    lambdas = optimize_lambdas(ngram)
+
+    print()
+
+    print('lambdas={}'.format(lambdas))
+    _, sentence_perplexities = ngram.perplexity(lambdas=lambdas)
+    print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
+
+    # print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
 
 
 if __name__ == '__main__':
