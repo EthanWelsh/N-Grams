@@ -105,6 +105,17 @@ def optimize_lambdas(model, sentences):
     return tuple(parameters.x)
 
 
+def evaluate(perplexities):
+
+    non_inf_values = []
+
+    for perplexity in perplexities:
+        if perplexity != float('inf'):
+            non_inf_values += [perplexity]
+
+    return sum(non_inf_values) / len(non_inf_values), len(perplexities) - len(non_inf_values)
+
+
 def main():
     #train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
 
@@ -114,14 +125,21 @@ def main():
     print('Training on Corpus')
     ngram = train_corpus(train_sentences)
 
-    sentences_probabilities = ngram.sentences_probabilities(train_sentences)
+    print('Computing probabilities...')
 
-    interpolated_probabilities = ngram.interpolate_sentences(sentences_probabilities, lambdas=(.15, .35, .5))
-    print(ngram.sentences_perplexity(interpolated_probabilities))
+    ngram.sentences_probabilities(train_sentences)
 
-    interpolated_probabilities = ngram.interpolate_sentences(sentences_probabilities, lambdas=(.1, .3, .6))
-    print(ngram.sentences_perplexity(interpolated_probabilities))
+    print()
 
+    print('lambdas=(.15, .35, .5)')
+    _, sentence_perplexities = ngram.perplexity(lambdas=(.15, .35, .5))
+    print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
+
+    print()
+
+    print('lambdas=(.1, .3, .6)')
+    _, sentence_perplexities = ngram.perplexity(lambdas=(.1, .3, .6))
+    print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
 
     #print('Optimizing Lambdas for Interpolation')
     #lambdas = optimize_lambdas(ngram, train_sentences)

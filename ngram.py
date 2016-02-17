@@ -28,8 +28,9 @@ class NGram:
         self.unigrams = {}
         self.word_count = 0
 
-    def train(self, sentences, n):
+        self.probabilities = []
 
+    def train(self, sentences, n):
         if n == 1:
             for sentence in sentences:
                 for word in sentence:
@@ -53,52 +54,74 @@ class NGram:
     def successor_probabilities(self, prefix):
         prefix = tuple(word if word in self.unigrams else '<UNK>' for word in prefix)
 
-        unigrams = dict([(word, self.unigrams[word] / self.word_count)
-                         for word in self.unigrams.keys()])
-
         bigrams = dict([(word, self.ngrams[prefix[-2:]].get_probability(word))
                         for word in self.ngrams[prefix[-2:]].keys()]) if prefix[-2:] in self.ngrams else {}
 
         trigrams = dict([(word, self.ngrams[prefix].get_probability(word))
                          for word in self.ngrams[prefix].keys()]) if prefix in self.ngrams else {}
 
-        word_probabilities = {word: (unigrams.get(word, 0), bigrams.get(word, 0), trigrams.get(word, 0))
-                              for word in self.unigrams.keys()}
+        potentials = [word for word in list(bigrams.keys()) + list(trigrams.keys())]
+
+        word_probabilities = {word: (bigrams.get(word, 0), trigrams.get(word, 0)) for word in potentials}
 
         return word_probabilities
 
-    def sentences_probabilities(self, sentences):
-        return [self.per_word_probabilities(sentence) for sentence in sentences]
+    """
+    Given a list of sentences, will set self.probabilities to a list of tuples with the predictive probabilities for the
+    unigram, bigram, and trigram models
+    """
 
-    def per_word_probabilities(self, sentence):
+    def sentences_probabilities(self, sentences):
+        print('Getting probabilities for', len(sentences), 'sentences')
+        self.probabilities.clear()
+        for sentence in sentences:
+            self.probabilities += [self._per_word_probabilities(sentence)]
+
+            # self.probabilities = [self._per_word_probabilities(sentence) for sentence in sentences]
+
+    """
+    Given a sentence (a list of words), will compute the probability values for each word in the sentence
+    :return: a list of probability values for each respective word of the sentence.
+    """
+
+    def _per_word_probabilities(self, sentence):
         probabilities = []
+
         for trigram in zip(*[sentence[i:] for i in range(3)]):
             prefix, result = (trigram[:2], trigram[-1])
-            probabilities += [self.successor_probabilities(prefix).get(result, (0, 0, 0))]
+
+            probabilities += [(self.unigrams.get(result, self.unigrams['<UNK>']) / self.word_count,) +
+                              self.successor_probabilities(prefix).get(result, (0, 0))]
         return probabilities
 
-    def interpolate_sentences(self, sentences_probabilities, lambdas):
-        return [self._interpolate_sentence(sent, lambdas) for sent in sentences_probabilities]
+    """
+    Interpolate together the unigram, bigram, and trigram probabilities
+    :return: the resulting list of lists of interpolated probabilities for each word in each sentence
+    """
 
-    @staticmethod
-    def _interpolate_sentence(sentence_probabilities, lambdas):
-        sentence_probs = []
+    def interpolate(self, lambdas):
+        interpolated_probabilities = []
 
-        for word_probabilities in sentence_probabilities:
-            unigram, bigram, trigram = word_probabilities
-            unigram_weight, bigram_weight, trigram_weight = lambdas
+        for sentence in self.probabilities:
+            sentence_probs = []
+            for word in sentence:
+                sentence_probs.append(sum([p * w for p, w in zip(word, lambdas)]))
+            interpolated_probabilities += [sentence_probs]
 
-            assert(sum(lambdas) == 1)
+        return interpolated_probabilities
 
-            sentence_probs += [unigram * unigram_weight + bigram * bigram_weight + trigram * trigram_weight]
+    """
+    Compute models perplexity after iteroplating with the given lambdas
+    :returns: the average perplexity of this model evaluated across all sentences, a list of perplexity values for each sentence
+    """
 
-        return sentence_probs #sum(sentence_probs) / len(sentence_probs)
+    def perplexity(self, lambdas):
 
-    def sentences_perplexity(self, sentences_probabilities):
-        sentence_perplexity = [self.per_word_perplexity(p) for p in sentences_probabilities]
-        return sum(sentence_perplexity) / len(sentence_perplexity)
+        sentence_perplexities = []
+        for sentence in self.interpolate(lambdas):
+            for word_probability in sentence:
+                sentence_perplexities += [sum(
+                    [math.pow(2, -1 * math.log(word_probability, 2) if word_probability > 0.0 else float('inf'))]) / len(
+                    sentence)]
 
-    @staticmethod
-    def per_word_perplexity(sentence_probabilities):
-        word_perplexities = [math.pow(2, math.log(p) / len(sentence_probabilities)) if p > 0 else float('inf') for p in sentence_probabilities]
-        return sum(word_perplexities) / len(word_perplexities)
+        return sum(sentence_perplexities) / len(sentence_perplexities), sentence_perplexities
