@@ -1,11 +1,11 @@
+import os
 import re
 import sys
-import time
 from os import listdir
 from os.path import isfile, join
 
-import scipy
 from nltk.tokenize import sent_tokenize
+from scipy.optimize import fmin_slsqp
 
 from ngram import NGram
 
@@ -46,10 +46,10 @@ def remove_gutenberg_disclamer(file_str):
     return file_str
 
 
-def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=None, clean_routine=None, disp=False):
+def read_corpus(path, is_tokenized=False, token_start_end=None, clean_routine=None, disp=False):
     sentences = []
 
-    if is_directory:
+    if os.path.isdir(path):
         files = [join(path, file) for file in listdir(path) if isfile(join(path, file))]
         for i, file in enumerate(files):
             if disp and int((i / len(files)) * 100) % 2 == 0:
@@ -64,6 +64,7 @@ def read_corpus(path, is_directory=False, is_tokenized=False, token_start_end=No
                                            token_start_end)
 
         if disp:
+            progress_bar(100)
             print()
     else:
         with open(path, encoding='utf-8', errors='ignore') as data_file:
@@ -98,11 +99,13 @@ def prompt(ngram):
 
 
 def optimize_lambdas(model):
-    parameters = scipy.optimize.fmin_slsqp(lambda x : model.perplexity(x)[0],
-                                           (.1, .4, .5),
-                                           bounds=((0, 1), (0, 1), (0, 1)),
-                                           disp=False,
-                                           full_output=False)
+    parameters = fmin_slsqp(lambda x: model.perplexity(x)[0],
+                            (1, 1, 1),
+                            bounds=((0, 1), (0, 1), (0, 1)),
+                            disp=False,
+                            full_output=False,
+                            epsilon=.1,
+                            iter=200)
 
     return tuple(parameters)
 
@@ -123,12 +126,12 @@ def progress_bar(progress):
 
 
 def main():
-    #train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
+    #  train_sentences = read_corpus('train.txt', is_directory=False, is_tokenized=False)
 
     print("Reading Corpus:")
-    train_sentences = read_corpus('train_data', is_directory=True, is_tokenized=False, disp=True)
-    dev_sentences = read_corpus('dev_data', is_directory=True, is_tokenized=False, disp=True)
-    #test_sentences = read_corpus('test_data', is_directory=True, is_tokenized=False)
+    train_sentences = read_corpus('train_data', is_tokenized=False, disp=True)
+    dev_sentences = read_corpus('dev_data', is_tokenized=False, disp=True)
+    test_sentences = read_corpus('test_data', is_tokenized=False, disp=True)
 
     print('\nTraining on Corpus')
     ngram = train_corpus(train_sentences)
@@ -138,30 +141,17 @@ def main():
 
     del train_sentences, dev_sentences
 
-    print()
-
-    print('lambdas=(.15, .35, .5)')
-    _, sentence_perplexities = ngram.perplexity(lambdas=(.15, .35, .5))
-    print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
-
-    print()
-
-    print('lambdas=(.1, .3, .6)')
-    _, sentence_perplexities = ngram.perplexity(lambdas=(.1, .3, .6))
-    print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
-
-    print()
-
     print('Optimizing Lambdas for Interpolation')
     lambdas = optimize_lambdas(ngram)
 
-    print()
+    print('Optimization Complete. Optimal interpolation weights:', lambdas)
 
     print('lambdas={}'.format(lambdas))
     _, sentence_perplexities = ngram.perplexity(lambdas=lambdas)
     print('avg_perplexity: {0:.10f} \t inf_count: {1:.10f}'.format(*evaluate(sentence_perplexities)))
 
-    # print(ngram.perplexity(sentences=train_sentences, lambdas=lambdas))
+    ngram.sentences_probabilities(test_sentences, disp=True)
+    print('Perplexity:', ngram.perplexity(lambdas))
 
 
 if __name__ == '__main__':

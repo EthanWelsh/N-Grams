@@ -53,6 +53,7 @@ class NGram:
                     self.add(ngram)
 
         if disp:
+            self.progress_bar(100)
             print()
 
     def add(self, ngram):
@@ -83,7 +84,6 @@ class NGram:
     Given a list of sentences, will set self.probabilities to a list of tuples with the predictive probabilities for the
     unigram, bigram, and trigram models
     """
-
     def sentences_probabilities(self, sentences, disp=False):
         self.probabilities.clear()
 
@@ -111,16 +111,18 @@ class NGram:
             self.probabilities += [sentence_probabilities]
 
         if disp:
+            self.progress_bar(100)
             print()
 
     """
     Interpolate together the unigram, bigram, and trigram probabilities
     :return: the resulting list of lists of interpolated probabilities for each word in each sentence
     """
-
     def interpolate(self, lambdas):
+
         w1, w2, w3 = lambdas
-        lambdas = (w1 / sum(lambdas), w2 / sum(lambdas), w3 / sum(lambdas))
+        lambda_sum = sum(lambdas)
+        lambdas = (w1 / lambda_sum, w2 / lambda_sum, w3 / lambda_sum) if lambda_sum > 0 else (0, 0, 0)
 
         interpolated_probabilities = []
         for sentence in self.probabilities:
@@ -135,21 +137,24 @@ class NGram:
     Compute models perplexity after iteroplating with the given lambdas
     :returns: the average perplexity of this model evaluated across all sentences, a list of perplexity values for each sentence
     """
-
     def perplexity(self, lambdas):
 
         lambdas = tuple(lambdas)
         sentence_perplexities = []
         for sentence in self.interpolate(lambdas):
+
+            word_perplexities = []
             for word_probability in sentence:
-                sentence_perplexities += [sum(
-                    [math.pow(2,
-                              -1 * math.log(word_probability, 2) if word_probability > 0.0 else float('inf'))]) / len(
-                    sentence)]
+                if word_probability > 0.0:
+                    word_perplexities += [-1 * math.log2(word_probability)]
+                else:
+                    word_perplexities += [float('inf')]
+
+            sentence_perplexities += [math.pow(2, sum(word_perplexities)/len(word_perplexities))]
 
         return sum(sentence_perplexities) / len(sentence_perplexities), sentence_perplexities
 
     @staticmethod
     def progress_bar(progress):
-            sys.stdout.write('\r[{0}] {1}%'.format('#'*progress + ' '*(100-progress), progress))
-            sys.stdout.flush()
+        sys.stdout.write('\r[{0}] {1}%'.format('#'*progress + ' '*(100-progress), progress))
+        sys.stdout.flush()
