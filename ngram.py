@@ -2,6 +2,7 @@ import math
 import re
 import sys
 
+import numpy
 from scipy.optimize import fmin_slsqp
 
 
@@ -33,6 +34,25 @@ class NGram:
         self.word_count = 0
 
         self.probabilities = []
+
+    @classmethod
+    def train_model(cls, sentences, disp=False):
+        sentences = prune_unknowns(sentences)
+        ngram = NGram()
+
+        if disp:
+            print('Training Unigram')
+        ngram.train(sentences, 1, disp)  # unigram
+
+        if disp:
+            print('Training Bigram')
+        ngram.train(sentences, 2, disp)  # bigram
+
+        if disp:
+            print('Training Trigram')
+        ngram.train(sentences, 3, disp)  # trigram
+
+        return ngram
 
     def train(self, sentences, n, disp=False):
         if n == 1:
@@ -183,20 +203,10 @@ def prune_unknowns(sentences, k=1):
     return [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
 
 
-def train_corpus(sentences):
-    sentences = prune_unknowns(sentences)
-    ngram = NGram()
-
-    ngram.train(sentences, 1)  # unigram
-    ngram.train(sentences, 2)  # bigram
-    ngram.train(sentences, 3)  # trigram
-
-    return ngram
-
-
-def optimize_lambdas(model, bounds=((0, 1), (0, 1), (0, 1))):
-    parameters = fmin_slsqp(lambda x: model.perplexity(x)[0],
-                            (1, 1, 1),
+def optimize_lambdas(model, bounds=((0.0, 1.0), (0.0, 1.0), (0.0, 1.0))):
+    print(bounds)
+    parameters = fmin_slsqp(func=lambda x: model.perplexity(x)[0],
+                            x0=numpy.asarray([1, 1, 1]),
                             bounds=bounds,
                             disp=False,
                             full_output=False,
@@ -205,11 +215,11 @@ def optimize_lambdas(model, bounds=((0, 1), (0, 1), (0, 1))):
     return tuple(parameters)
 
 
-def get_sentences(untokenized_text, is_tokenized=False, sent_tokenizer=None, token_start_end=None):
+def get_sentences(untokenized_text, is_tokenized=False, sentence_tokenizer=None, token_start_end=None):
     if not is_tokenized:
         untokenized_text = untokenized_text.lower()
         return [('<s0> <s1> ' + sentence + ' </s>').split()
-                for sentence in sent_tokenizer(untokenized_text) if sentence]
+                for sentence in sentence_tokenizer(untokenized_text) if sentence]
     else:
         start_token, end_token = token_start_end
         return [('<s0> <s1> ' + sentence + '</s>').split()
@@ -227,7 +237,7 @@ def main():
     with open(train_path, 'r') as train_file:
         train_sentences = get_sentences(untokenized_text=train_file.read().rstrip(),
                                         is_tokenized=False,
-                                        sent_tokenizer=lambda text: [sentence for sentence in text.split('.')])
+                                        sentence_tokenizer=lambda text: [sentence for sentence in text.split('.')])
 
     with open(dev_path, 'r') as dev_file:
         dev_sentences = get_sentences(untokenized_text=dev_file.read().rstrip(),
@@ -240,22 +250,24 @@ def main():
                                        token_start_end=('<s>', '</s>'))
 
     # Train on test sentences
-    ngram = train_corpus(train_sentences)
+    ngram = NGram.train_model(train_sentences)
 
     # Compute probabilities for dev_file
     ngram.sentences_probabilities(dev_sentences)
 
     # Optimize lambdas for interpolation
-    lambdas = optimize_lambdas(ngram, bounds={'1':  ((0, 1), (0, 0), (0, 0)),
-                                              '2':  ((0, 0), (0, 1), (0, 0)),
-                                              '2s': ((0, 1), (0, 1), (0, 0)),
-                                              '3':  ((0, 0), (0, 0), (0, 1)),
-                                              '3s': ((0, 1), (0, 1), (0, 1))}[model_type])
+    lambdas = optimize_lambdas(ngram, bounds={'1':  [(0, 1), (0, 0), (0, 0)],
+                                              '2':  [(0, 0), (0, 1), (0, 0)],
+                                              '2s': [(0, 1), (0, 1), (0, 0)],
+                                              '3':  [(0, 1), (0, 1), (0, 1)],
+                                              '3s': [(0, 1), (0, 1), (0, 1)]}[model_type])
 
     # Computing probabilities for test_file
     ngram.sentences_probabilities(test_sentences)
 
     average_perplexity, sentences_perplexity = ngram.perplexity(lambdas=lambdas)
+
+    test_sentences = [' '.join(sentence).replace('<s0> <s1>', '<s>') for sentence in test_sentences]
 
     print('Average perplexity over all sentences: {0:.5f} using the following lambdas: {1}'.format(average_perplexity, lambdas))
     for i, sentence_perplexity in enumerate(sentences_perplexity):
