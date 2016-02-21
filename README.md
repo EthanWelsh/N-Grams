@@ -21,9 +21,68 @@ IE:
 python3 main.py hw1_samplein.txt
 ```
 
-## 2. Intrinsic Evaluation
+## Writeup
+
+
+***What problems can occur (or have occurred in your experiments, if there is any) when the N-gram language model you 
+***implemented in Part I is trained on a large training data such as the Project Gutenberg? Given that you have access 
+***to the development data, how did it help you to adapt and/or train your models? 
+
+
+***How did your models perform? Were they as you expected? Why wasn’t the N-gram language model alone good enough for 
+***the sentence completion task? What additional tools or techniques do you think are necessary? Can the language model 
+***itself be changed to account for more ambiguities? 
+
+
+My accuracy on the extrinsic evaluation part of this assignment was a fairly reasonable 38.3653% over all sentences, 
+which was around the rate that I was expecting. The largest disadvantage of n-grams can be found in the fact they do not 
+adequately utilize context clues in order to make their predictions. For instance, take the following sentence:
+
 ```
-python ngram.py 3s train.txt dev.txt test.txt
+  <s> You have all the cleverness which makes a successful man </s>
+	=> <s> You have all the cleverness which makes a tired man </s>
+```
+
+The above sentence represents one of the questions that my N-Gram model answered incorrectly. It is notable that the 
+although to a human reader the model's choice of "tired" is obviously wrong, the word "tired" makes a lot of 
+sense when considered locally: "makes a tired" and "a tired man" both seem like highly plausible trigrams. The only
+thing that tells us (the human reader) that "tired" is not the correct completion of the sentence is the reference to 
+the "cleverness" mentioned 4 words prior to the word in question. Our model, which accounts only for a maximum of two 
+words of history (trigram) is not able to properly draw upon the context clues that "cleverness" indicates in order to 
+arrive at the correct result. 
+
+In order to acheive a higher accuracy, the NGram model could probably and adapted in the following ways:
+ - Increase the history by using higher-order NGrams
+    + Since each ngram is many times more computationally expensive than its forerunner, this could become 
+    computationally infeasible.
+    + There would likely be diminishing returns as you increased the order of your ngram model. Higher order ngrams help 
+    narrow the search for the next word considerably. However, it is possible to narrow the possibilities too much: if 
+    your model is confronted with an ngram that it has never seen before, your model will return a 0 probability for 
+    that ngram. As more and more words are added to our model's history, this will become more than more prevalent, 
+    which will largely diminish the effectiveness of using higher order models.
+ - Incorporate a notion of synonyms into the model. Certain words (take "large" and "big" for example) share almost 
+ identical meaning, and could easily be substituted for one another. Most words in the English language have several 
+ such synonyms. Accounting for such synonyms would drastically increase the potency of our training data for building a 
+ large model
+    + This too is computationally expensive as single word replacement could mean altering our models in rather severe
+    ways.
+    + It would be immensely difficult to computationally discover such synonyms.
+    + Even if two words may appear related in a thesaurus, word frequently take upon different means in different work 
+    that would be virtually impossible detect given just a simple ngram model.
+ - In a similar vein, replacing each word by its part of speech could be similarly helpful in allowing our model's 
+ training to be more flexible   
+    
+
+
+
+
+
+Above you can see a sentence
+
+## 2. Intrinsic Evaluation
+
+### python ngram.py 3s train.txt dev.txt test.txt
+```
 Average perplexity over all sentences: 7.16788 using the following lambdas: (0.98241372299209306, 4.1330750372837589e-12, 0.18466026783388856)
 6.20572 : <s> b a , a a </s>
 7.13254 : <s> b a h </s>
@@ -32,6 +91,45 @@ Average perplexity over all sentences: 7.16788 using the following lambdas: (0.9
 6.22332 : <s> a a , a b , b </s>
 ```
 
+### python ngram.py 3 train.txt dev.txt test.txt
+```
+Average perplexity over all sentences: inf using the following lambdas: (nan, nan, nan)
+inf : <s> b a , a a </s>
+inf : <s> b a h </s>
+inf : <s> b a , i </s>
+inf : <s> a b , j k , b a </s>
+inf : <s> a a , a b , b </s>
+```
+
+### python ngram.py 2s train.txt dev.txt test.txt
+```
+Average perplexity over all sentences: 7.04063 using the following lambdas: (1.0, 0.0, 0.0)
+6.09395 : <s> b a , a a </s>
+6.77295 : <s> b a h </s>
+7.91908 : <s> b a , i </s>
+7.97896 : <s> a b , j k , b a </s>
+6.43823 : <s> a a , a b , b </s>
+```
+
+### python ngram.py 2 train.txt dev.txt test.txt
+```
+Average perplexity over all sentences: inf using the following lambdas: (nan, nan, nan)
+inf : <s> b a , a a </s>
+inf : <s> b a h </s>
+inf : <s> b a , i </s>
+inf : <s> a b , j k , b a </s>
+inf : <s> a a , a b , b </s>
+```
+
+### python ngram.py 1 train.txt dev.txt test.txt
+```
+Average perplexity over all sentences: 7.04063 using the following lambdas: (1.0, 0.0, 0.0)
+6.09395 : <s> b a , a a </s>
+6.77295 : <s> b a h </s>
+7.91908 : <s> b a , i </s>
+7.97896 : <s> a b , j k , b a </s>
+6.43823 : <s> a a , a b , b </s>
+```
 
 ## 3. Extrinsic Evaluation
 ```
