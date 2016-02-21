@@ -2,8 +2,11 @@ import math
 import re
 import sys
 
+import nltk
 import numpy
 from scipy.optimize import fmin_slsqp
+import itertools
+from nltk import ngrams
 
 
 class NGram:
@@ -36,44 +39,42 @@ class NGram:
         self.probabilities = []
 
     @classmethod
-    def train_model(cls, sentences, disp=False):
+    def train_model(cls, sentences, order=((1, 0), (2, 0), (3, 0)), disp=False):
         sentences = prune_unknowns(sentences)
+        grams = []
+
+        for sentence in sentences:
+            for model in order:
+                grams += cls.ngrams(sentence, *model)
+
         ngram = NGram()
-
-        if disp:
-            print('Training Unigram')
-        ngram.train(sentences, 1, disp)  # unigram
-
-        if disp:
-            print('Training Bigram')
-        ngram.train(sentences, 2, disp)  # bigram
-
-        if disp:
-            print('Training Trigram')
-        ngram.train(sentences, 3, disp)  # trigram
-
+        ngram.train(grams, disp)
         return ngram
 
-    def train(self, sentences, n, disp=False):
-        if n == 1:
-            for i, sentence in enumerate(sentences):
-                if disp and int((i / len(sentences)) * 100) % 2 == 0:
-                    progress = int((i / len(sentences)) * 100)
-                    self.progress_bar(progress)
-
-                for word in sentence:
-                    self.unigrams[word] = self.unigrams.get(word, 0) + 1
-                    self.word_count += 1
-
+    @staticmethod
+    def ngrams(sequence, n, k):
+        if n == 1 and k == 0:
+            for word in sequence:
+                yield (word,)
         else:
-            for i, sentence in enumerate(sentences):
-                if disp and int((i / len(sentences)) * 100) % 2 == 0:
-                    progress = int((i / len(sentences)) * 100)
-                    self.progress_bar(progress)
+            for ngram in nltk.ngrams(sequence, n + k, pad_right=True):
+                head = ngram[:1]
+                tail = ngram[1:]
+                for skip_tail in itertools.combinations(tail, n - 1):
+                    if skip_tail[-1] is None:
+                        continue
+                    yield head + skip_tail
 
-                for ngram in zip(*[sentence[i:] for i in range(n)]):
-                    self.add(ngram)
-
+    def train(self, grams, disp=False):
+        for i, gram in enumerate(grams):
+            if disp and int((i / len(grams)) * 100) % 2 == 0:
+                progress = int((i / len(grams)) * 100)
+                self.progress_bar(progress)
+            if len(gram) == 1:
+                self.unigrams[gram[0]] = self.unigrams.get(gram[0], 0) + 1
+                self.word_count += 1
+            else:
+                self.add(gram)
         if disp:
             self.progress_bar(100)
             print()

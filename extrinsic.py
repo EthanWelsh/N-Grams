@@ -59,10 +59,10 @@ def main():
     questions_path, answers_path = sys.argv[1:]
 
     print("Reading Corpus:")
-    train_sentences = read_corpus('train_data', disp=True)
+    train_sentences = read_corpus('dev_data', disp=True)
 
     print('\nTraining on Corpus')
-    model = NGram.train_model(train_sentences, disp=True)
+    model = NGram.train_model(train_sentences, order=((1, 0), (2, 0), (3, 0), (2, 1)), disp=True)
 
     with open(answers_path, 'r') as answer_file:
         answers = get_sentences(untokenized_text=answer_file.read(),
