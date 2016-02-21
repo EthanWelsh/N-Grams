@@ -28,7 +28,7 @@ def read_corpus(path, disp=False):
                 progress_bar(progress)
 
             with open(file, encoding='utf-8', errors='ignore') as data_file:
-                file_data = data_file.read()
+                file_data = data_file.read().lower()
                 data_file.readlines()
 
                 sentences += get_sentences(file_data, sentence_tokenizer=sent_tokenize)
