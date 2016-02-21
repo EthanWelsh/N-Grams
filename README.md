@@ -23,18 +23,10 @@ python3 main.py hw1_samplein.txt
 
 ## Writeup
 
-
-***What problems can occur (or have occurred in your experiments, if there is any) when the N-gram language model you 
-***implemented in Part I is trained on a large training data such as the Project Gutenberg? Given that you have access 
-***to the development data, how did it help you to adapt and/or train your models? 
-
-
-***How did your models perform? Were they as you expected? Why wasn’t the N-gram language model alone good enough for 
-***the sentence completion task? What additional tools or techniques do you think are necessary? Can the language model 
-***itself be changed to account for more ambiguities? 
-
-
-My accuracy on the extrinsic evaluation part of this assignment was a fairly reasonable 38.3653% over all sentences, 
+My model for the extrinsic evaluation part of the project used an interpolated trigram with an unknown threshold of 1. 
+I trained my model on the entire gutenberg corpus that was provided to us. Next, I used the first 520 answers in 
+the sentence completion data in order to perform sequential least squares gradient descent in order to tune my lambdas 
+to minimize perplexity. In doing the previous, my accuracy was a fairly reasonable 38.3653% over all sentences, 
 which was around the rate that I was expecting. The largest disadvantage of n-grams can be found in the fact they do not 
 adequately utilize context clues in order to make their predictions. For instance, take the following sentence:
 
@@ -51,7 +43,7 @@ the "cleverness" mentioned 4 words prior to the word in question. Our model, whi
 words of history (trigram) is not able to properly draw upon the context clues that "cleverness" indicates in order to 
 arrive at the correct result. 
 
-In order to acheive a higher accuracy, the NGram model could probably and adapted in the following ways:
+In order to achieve a higher accuracy, the NGram model could probably and adapted in the following ways:
  - Increase the history by using higher-order NGrams
     + Since each ngram is many times more computationally expensive than its forerunner, this could become 
     computationally infeasible.
@@ -70,15 +62,9 @@ In order to acheive a higher accuracy, the NGram model could probably and adapte
     + Even if two words may appear related in a thesaurus, word frequently take upon different means in different work 
     that would be virtually impossible detect given just a simple ngram model.
  - In a similar vein, replacing each word by its part of speech could be similarly helpful in allowing our model's 
- training to be more flexible   
+ training to be more flexible.  
+ - Use skip-grams or flex-grams in order to account for more history within each gram.
     
-
-
-
-
-
-Above you can see a sentence
-
 ## 2. Intrinsic Evaluation
 
 ### python ngram.py 3s train.txt dev.txt test.txt
