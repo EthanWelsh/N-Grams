@@ -142,14 +142,11 @@ class NGram:
         else:
             lambdas = [weight / lambda_sum for weight in lambdas]
 
-        interpolated_probabilities = []
         for sentence in self.probabilities:
             sentence_probs = []
             for word in sentence:
                 sentence_probs.append(sum([p * w for p, w in zip(word, lambdas)]))
-            interpolated_probabilities.append(sentence_probs)
-
-        return interpolated_probabilities
+            yield sentence_probs
 
     """
     Compute models perplexity after interpolating with the given lambdas
