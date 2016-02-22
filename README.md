@@ -65,6 +65,18 @@ In order to achieve a higher accuracy, the NGram model could probably and adapte
  training to be more flexible.  
  - Use skip-grams or flex-grams in order to account for more history within each gram.
     
+    
+### Extra Credit
+For the extra credit part of this assignment I did two things:
+- I incorporated skip-grams into my model. Skip-grams are powerful because the allow relationships to be established 
+between words that wouldn't otherwise find themselves in an gram. For instance, in the example sentence above, a skip 
+gram could be created with n=2 and k=3 which would produce the ngram (cleverness, successful). This would help use
+history considerably further back in the sentence that otherwise could not be accounted for due to the large 
+computational cost of computing high order ngrams. 
+ - In order to perform lambdas optimization I used scipy's gradient descent module. This gradient descent allows me to 
+ converge far more quickly and accuratly on the ideal lambdas values for interpolation and was one of the key reason why 
+ my model performed so well.
+    
 ## 2. Intrinsic Evaluation
 
 ### python ngram.py 3s train.txt dev.txt test.txt

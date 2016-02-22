@@ -40,7 +40,7 @@ def main():
     questions_path, answers_path = sys.argv[1:]
 
     print("Reading Corpus:")
-    train_sentences = read_corpus('dev_data')
+    train_sentences = read_corpus('train_data')
     model_orders = ((1, 0), (2, 0), (3, 1))
 
     print('\nTraining on Corpus')
