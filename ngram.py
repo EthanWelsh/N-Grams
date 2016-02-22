@@ -1,12 +1,12 @@
+import itertools
 import math
+import os
 import re
 import sys
 
 import nltk
 import numpy
 from scipy.optimize import fmin_slsqp
-import itertools
-from nltk import ngrams
 
 
 class NGram:
@@ -39,20 +39,24 @@ class NGram:
         self.probabilities = []
 
     @classmethod
-    def train_model(cls, sentences, order=((1, 0), (2, 0), (3, 0)), disp=False):
+    def train_model(cls, sentences, order=((1, 0), (2, 0), (3, 0))):
+        print('Pruning Unknowns')
         sentences = prune_unknowns(sentences)
-        grams = []
-
-        for sentence in sentences:
-            for model in order:
-                grams += cls.ngrams(sentence, *model)
 
         ngram = NGram()
-        ngram.train(grams, disp)
+
+        print('Unknowns Pruned. Gramifying and Training.')
+
+        def corpus_grams():
+            for sent in sentences:
+                for model in order:
+                    yield from cls.get_ngrams(sent, *model)
+
+        ngram.train(corpus_grams())
         return ngram
 
     @staticmethod
-    def ngrams(sequence, n, k):
+    def get_ngrams(sequence, n, k):
         if n == 1 and k == 0:
             for word in sequence:
                 yield (word,)
@@ -65,19 +69,13 @@ class NGram:
                         continue
                     yield head + skip_tail
 
-    def train(self, grams, disp=False):
+    def train(self, grams):
         for i, gram in enumerate(grams):
-            if disp and int((i / len(grams)) * 100) % 2 == 0:
-                progress = int((i / len(grams)) * 100)
-                self.progress_bar(progress)
             if len(gram) == 1:
                 self.unigrams[gram[0]] = self.unigrams.get(gram[0], 0) + 1
                 self.word_count += 1
             else:
                 self.add(gram)
-        if disp:
-            self.progress_bar(100)
-            print()
 
     def add(self, ngram):
         prefix = ngram[:-1]
@@ -108,35 +106,27 @@ class NGram:
     unigram, bigram, and trigram models
     """
 
-    def sentences_probabilities(self, sentences, disp=False):
+    def sentences_probabilities(self, sentences, orders=((1, 0), (2, 0), (3, 0))):
         self.probabilities.clear()
+        for sentence in sentences:
+            sentence_probabilities = ()
 
-        for i, sentence in enumerate(sentences):
-            if disp and int((i / len(sentences)) * 100) % 2 == 0:
-                progress = int((i / len(sentences)) * 100)
-                self.progress_bar(progress)
+            for order in orders:
+                order_probabilities = []
 
-            sentence_probabilities = []
+                for gram in self.get_ngrams(sentence, *order):
+                    if len(gram) == 1:
+                        order_probabilities.append(
+                            self.unigrams.get(gram[0], self.unigrams['<UNK>']) / self.word_count, )
+                    else:
+                        prefix = gram[:-1]
+                        value = gram[-1]
 
-            for trigram in zip(*[sentence[i:] for i in range(3)]):
-                trigram = tuple(word if word in self.unigrams else '<UNK>' for word in trigram)
+                        order_probabilities.append(self.ngrams[prefix].get_probability(value)
+                                                   if prefix in self.ngrams else 0, )
+                sentence_probabilities += (order_probabilities,)
 
-                unigram_prob = self.unigrams.get(trigram[-1], self.unigrams['<UNK>']) / self.word_count
-                bigram_prob, trigram_prob = 0, 0
-
-                if trigram[-2] in self.ngrams:
-                    bigram_prob = self.ngrams[trigram[-2]].get_probability(trigram[-1])
-
-                if trigram[-3:-1] in self.ngrams:
-                    trigram_prob = self.ngrams[trigram[-3:-1]].get_probability(trigram[-1])
-
-                sentence_probabilities += [(unigram_prob, bigram_prob, trigram_prob)]
-
-            self.probabilities += [sentence_probabilities]
-
-        if disp:
-            self.progress_bar(100)
-            print()
+            self.probabilities.append(list(zip(*sentence_probabilities)))
 
     """
     Interpolate together the unigram, bigram, and trigram probabilities
@@ -145,16 +135,19 @@ class NGram:
 
     def interpolate(self, lambdas):
 
-        w1, w2, w3 = lambdas
         lambda_sum = sum(lambdas)
-        lambdas = (w1 / lambda_sum, w2 / lambda_sum, w3 / lambda_sum) if lambda_sum > 0 else (0, 0, 0)
+
+        if lambda_sum == 0:
+            lambdas = (0,) * len(lambdas)
+        else:
+            lambdas = [weight / lambda_sum for weight in lambdas]
 
         interpolated_probabilities = []
         for sentence in self.probabilities:
             sentence_probs = []
             for word in sentence:
                 sentence_probs.append(sum([p * w for p, w in zip(word, lambdas)]))
-            interpolated_probabilities += [sentence_probs]
+            interpolated_probabilities.append(sentence_probs)
 
         return interpolated_probabilities
 
@@ -173,18 +166,13 @@ class NGram:
             word_perplexities = []
             for word_probability in sentence:
                 if word_probability > 0.0:
-                    word_perplexities += [-1 * math.log2(word_probability)]
+                    word_perplexities.append(-1 * math.log2(word_probability))
                 else:
-                    word_perplexities += [float('inf')]
+                    word_perplexities.append(float('inf'))
 
-            sentence_perplexities += [math.pow(2, sum(word_perplexities) / len(word_perplexities))]
+            sentence_perplexities.append(math.pow(2, sum(word_perplexities) / len(word_perplexities)))
 
         return sum(sentence_perplexities) / len(sentence_perplexities), sentence_perplexities
-
-    @staticmethod
-    def progress_bar(progress):
-        sys.stdout.write('\r[{0}] {1}%'.format('#' * progress + ' ' * (100 - progress), progress))
-        sys.stdout.flush()
 
 
 def get_unknowns(word_counts, k):
@@ -200,19 +188,23 @@ def get_word_histogram(sentences):
 
 
 def prune_unknowns(sentences, k=1):
+    sentences = list(sentences)
+
     word_hist = get_word_histogram(sentences)
     unknowns = get_unknowns(word_hist, k)
-    return [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
+    yield from [[word if word not in unknowns else '<UNK>' for word in sentence] for sentence in sentences]
 
 
-def optimize_lambdas(model, bounds=(1, 1, 1)):
+def optimize_lambdas(model, initial_guess, bounds=None):
+    if not bounds:
+        bounds = (1,) * len(initial_guess)
 
     def opt_func(weights):
         return model.perplexity(tuple([a * b for a, b in zip(weights, bounds)]))[0]
 
     parameters = fmin_slsqp(func=opt_func,
-                            x0=numpy.asarray([1, 1, 1]),
-                            bounds=((0, 1), (0, 1), (0, 1)),
+                            x0=numpy.asarray(initial_guess),
+                            bounds=[(0, 1)] * len(initial_guess),
                             disp=False,
                             full_output=False,
                             epsilon=.1)
@@ -224,12 +216,13 @@ def optimize_lambdas(model, bounds=(1, 1, 1)):
 
 def get_sentences(untokenized_text, is_tokenized=False, sentence_tokenizer=None, token_start_end=None):
     if not is_tokenized:
-        return [('<s0> <s1> ' + sentence + ' </s>').split()
-                for sentence in sentence_tokenizer(untokenized_text) if sentence]
+        yield from [('<s0> <s1> ' + sentence + ' </s>').split()
+                    for sentence in sentence_tokenizer(untokenized_text) if sentence]
     else:
         start_token, end_token = token_start_end
-        return [('<s0> <s1> ' + sentence + '</s>').split()
-                for sentence in re.findall(r'{}(.*){}'.format(start_token, end_token), untokenized_text) if sentence]
+        yield from [('<s0> <s1> ' + sentence + '</s>').split()
+                    for sentence in re.findall(r'{}(.*){}'.format(start_token, end_token), untokenized_text) if
+                    sentence]
 
 
 def main():
@@ -245,38 +238,42 @@ def main():
                                         is_tokenized=False,
                                         sentence_tokenizer=lambda text: [sentence for sentence in text.split('.')])
 
+    # Train on test sentences
+
+    ngram = NGram.train_model(train_sentences)
+    del train_sentences
+
     with open(dev_path, 'r') as dev_file:
         dev_sentences = get_sentences(untokenized_text=dev_file.read().rstrip(),
                                       is_tokenized=True,
                                       token_start_end=('<s>', '</s>'))
+
+    # Compute probabilities for dev_file
+    ngram.sentences_probabilities(dev_sentences)
+    del dev_sentences
+
+    # Optimize lambdas for interpolation
+    lambdas = optimize_lambdas(ngram, initial_guess=(1, 1, 1), bounds={'1': (1, 0, 0),
+                                                                       '2': (0, 1, 0),
+                                                                       '2s': (1, 1, 0),
+                                                                       '3': (0, 0, 1),
+                                                                       '3s': (1, 1, 1)}[model_type])
 
     with open(test_path, 'r') as test_file:
         test_sentences = get_sentences(untokenized_text=test_file.read().rstrip(),
                                        is_tokenized=True,
                                        token_start_end=('<s>', '</s>'))
 
-    # Train on test sentences
-    ngram = NGram.train_model(train_sentences)
-
-    # Compute probabilities for dev_file
-    ngram.sentences_probabilities(dev_sentences)
-
-    # Optimize lambdas for interpolation
-    lambdas = optimize_lambdas(ngram, bounds={'1': (1, 0, 0),
-                                              '2': (0, 1, 0),
-                                              '2s': (1, 1, 0),
-                                              '3': (0, 0, 1),
-                                              '3s': (1, 1, 1)}[model_type])
-
     # Computing probabilities for test_file
+    test_sentences = list(test_sentences)
     ngram.sentences_probabilities(test_sentences)
 
     average_perplexity, sentences_perplexity = ngram.perplexity(lambdas=lambdas)
 
     test_sentences = [' '.join(sentence).replace('<s0> <s1>', '<s>') for sentence in test_sentences]
-
     print('Average perplexity over all sentences: {0:.5f} using the following lambdas: {1}'.format(average_perplexity,
                                                                                                    lambdas))
+
     for i, sentence_perplexity in enumerate(sentences_perplexity):
         print('{0:.5f} : {1}'.format(sentence_perplexity, test_sentences[i]))
 

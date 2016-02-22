@@ -4,6 +4,7 @@ import sys
 from os import listdir
 from os.path import isfile, join
 
+import itertools
 from nltk.tokenize import sent_tokenize
 
 from ngram import NGram, get_sentences, optimize_lambdas
@@ -17,27 +18,12 @@ def remove_gutenberg_disclamer(file_str):
     return file_str
 
 
-def read_corpus(path, disp=False):
-    sentences = []
-
+def read_corpus(path):
     if os.path.isdir(path):
         files = [join(path, file) for file in listdir(path) if isfile(join(path, file))]
         for i, file in enumerate(files):
-            if disp and int((i / len(files)) * 100) % 2 == 0:
-                progress = int((i / len(files)) * 100)
-                progress_bar(progress)
-
             with open(file, encoding='utf-8', errors='ignore') as data_file:
-                file_data = data_file.read().lower()
-                data_file.readlines()
-
-                sentences += get_sentences(file_data, sentence_tokenizer=sent_tokenize)
-
-        if disp:
-            progress_bar(100)
-            print()
-
-    return sentences
+                yield from get_sentences(data_file.read().lower(), sentence_tokenizer=sent_tokenize)
 
 
 def evaluate(perplexities):
@@ -45,35 +31,35 @@ def evaluate(perplexities):
 
     for perplexity in perplexities:
         if perplexity != float('inf'):
-            non_inf_values += [perplexity]
+            non_inf_values.append(perplexity)
 
     return sum(non_inf_values) / len(non_inf_values), len(perplexities) - len(non_inf_values)
-
-
-def progress_bar(progress):
-    sys.stdout.write('\r[{0}] {1}%'.format('#' * progress + ' ' * (100 - progress), progress))
-    sys.stdout.flush()
 
 
 def main():
     questions_path, answers_path = sys.argv[1:]
 
     print("Reading Corpus:")
-    train_sentences = read_corpus('dev_data', disp=True)
+    train_sentences = read_corpus('dev_data')
+    model_orders = ((1, 0), (2, 0), (3, 1))
 
     print('\nTraining on Corpus')
-    model = NGram.train_model(train_sentences, order=((1, 0), (2, 0), (3, 0), (2, 1)), disp=True)
 
+    model = NGram.train_model(train_sentences, order=model_orders)
+    del train_sentences
+
+    print('Reading answers')
     with open(answers_path, 'r') as answer_file:
         answers = get_sentences(untokenized_text=answer_file.read(),
                                 is_tokenized=True,
                                 token_start_end=('<s>', '</s>'))
 
-    dev_sentences = answers[:520]
+    dev_sentences = list(answers)[:520]
 
     print('Calculating Probabilities for Dev Sentences:')
-    model.sentences_probabilities(dev_sentences, disp=True)
-    lambdas = optimize_lambdas(model)
+    model.sentences_probabilities(dev_sentences)
+    lambdas = optimize_lambdas(model, initial_guess=((1,) * len(model_orders)))
+    print('Lambdas:', lambdas)
 
     with open(questions_path, 'r') as question_file:
         questions = get_sentences(untokenized_text=question_file.read(),
@@ -81,7 +67,9 @@ def main():
                                   token_start_end=('<s>', '</s>'))
 
     print('Calculating Probabilities for Test Sentences:')
-    model.sentences_probabilities(sentences=questions, disp=True)
+
+    questions = list(questions)
+    model.sentences_probabilities(sentences=questions)
     _, sentences_perplexity = model.perplexity(lambdas=lambdas)
 
     print('Writing sentences and perplexities to file')
